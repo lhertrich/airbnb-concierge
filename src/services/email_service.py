@@ -1,27 +1,62 @@
 import logging
-from imap_tools import MailBox, AND, MailMessage
+import os.path
 
-from src.config import GMAIL_ADDRESS, GMAIL_APP_PASSWORD, AIRBNB_SENDER
-from src.agent.concierge import process_email
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+
 
 logger = logging.getLogger(__name__)
 
-IMAP_HOST = "imap.gmail.com"
+
+class GmailService:
+
+    def __init__(self, token_path: str='token.json', scopes: list[str]=['https://www.googleapis.com/auth/gmail.readonly']):
+        self.creds = None
+        self.token_path = token_path
+        self._scopes = scopes
+
+        self._get_credentials()
+        self.service = self._build_service()
 
 
-def poll_emails() -> None:
-    logger.info("Polling for unread Airbnb emails...")
-    try:
-        with MailBox(IMAP_HOST).login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD) as mb:
-            emails = list(mb.fetch(AND(from_=AIRBNB_SENDER, seen=False)))
-            logger.info("Found %d unread Airbnb email(s).", len(emails))
-            for msg in emails:
-                _handle_email(msg)
-    except Exception:
-        logger.exception("Failed to poll emails.")
+    def _get_credentials(self) -> Credentials:
+        if os.path.exists("token.json"):
+            self.creds = Credentials.from_authorized_user_file("token.json", self._scopes)
+        if not self.creds or not self.creds.valid:
+            if self.creds and self.creds.expired and self.creds.refresh_token:
+                self.creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                "credentials.json", self._scopes
+                )
+                self.creds = flow.run_local_server(port=0)
+            # Save the credentials for the next run
+            with open("token.json", "w") as token:
+                token.write(self.creds.to_json())
 
+    
+    def _build_service(self):
+        try:
+            service = build("gmail", "v1", credentials=self.creds)
+            return service
+        except HttpError as error:
+            print(f"An error occurred: {error}")
+            return None
 
-def _handle_email(msg: MailMessage) -> None:
-    logger.info("Processing email: %r dated %s", msg.subject, msg.date)
-    body = msg.text or msg.html or ""
-    process_email(subject=msg.subject, body=body, date=msg.date)
+    
+    def query_email(self):
+        try:
+            results = self.service.users().labels().list(userId="me").execute()
+            labels = results.get("labels", [])
+
+            if not labels:
+                logger.info("No labels found.")
+            
+            return labels
+
+        except HttpError as error:
+            logger.error(f"An error occurred: {error}")
+            return None

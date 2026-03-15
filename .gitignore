@@ -20,3 +20,7 @@ wheels/
 # IDE
 .vscode/
 .idea/
+
+# Authenttication secrets
+token*.json
+credentials*.json
