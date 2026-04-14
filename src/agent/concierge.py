@@ -1,8 +1,11 @@
+import json
 import logging
 import ollama
 from datetime import datetime
-from ollama import chat
 from ollama import ChatResponse
+
+from src.models.enums import MessageType
+from src.models.message import Message
 
 logger = logging.getLogger(__name__)
 
@@ -27,15 +30,20 @@ class ConciergeAgent:
             "If it is a booking request, also extract the check-in date, check-out date, number of guests and whether they have animals. "
         )
 
-    def process_email(self, subject: str, body: str, date: datetime) -> None:
+    def process_email(self, subject: str, body: str, date: datetime) -> Message | None:
         logger.info("Agent received email — subject: %r, date: %s", subject, date)
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    self.system_prompt
-                ),
-            },
+        chat_messages = [
+            {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": f"Email subject: {subject}\nEmail body: {body}"},
         ]
-        response: ChatResponse = chat(self.client, model="concierge", messages=messages)
+        try:
+            response: ChatResponse = self.client.chat(model="concierge", messages=chat_messages)
+            data = json.loads(response.message.content)
+            return Message(
+                name=data.get("name", ""),
+                message=data.get("message", ""),
+                type=MessageType(data.get("type", "other")),
+            )
+        except Exception as e:
+            logger.error("Failed to process email %r: %s", subject, e)
+            return None
