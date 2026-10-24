@@ -5,4 +5,3 @@ class Booking(BaseModel):
     check_in: str
     check_out: str
     num_guests: int
-    animals: bool

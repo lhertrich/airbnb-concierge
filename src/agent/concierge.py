@@ -10,7 +10,6 @@ from src.models.message import Message
 logger = logging.getLogger(__name__)
 
 class ConciergeAgent:
-    """A simple agent to process Airbnb emails and manage bookings."""
 
     def __init__(self, client: ollama.Client, system_prompt: str = None) -> None:
         self.client = client
